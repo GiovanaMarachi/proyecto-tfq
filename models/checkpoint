@@ -1,0 +1,2 @@
+model_checkpoint_path: "qnn_hibrido_bitcoin_ckpt-1"
+all_model_checkpoint_paths: "qnn_hibrido_bitcoin_ckpt-1"

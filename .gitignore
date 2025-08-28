@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.ipynb_checkpoints
+.venv/
+venv/
+
+# Node / builds
+node_modules/
+dist/
+build/
+.next/
+.out/
+
+# IDE / SO
+.vscode/
+.idea/
+.DS_Store
+
+# Datos pesados
+data/
+*.csv
+*.xlsx
+*.zip
+
+# Variables de entorno
+.env
+.env.*

@@ -1,0 +1,12 @@
+{
+  "seq_length": 20,
+  "n_features": 6,
+  "features_order": [
+    "open",
+    "high",
+    "low",
+    "close",
+    "basevolume",
+    "usdtvolume"
+  ]
+}
