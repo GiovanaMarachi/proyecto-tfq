@@ -1,0 +1,13 @@
+Resumen de Actividades:
+
+1.  **Verificación de Versiones de Python:** Se intentó verificar la presencia de `python3.11`, `python3.10` y `python3.9`, pero ninguna de estas versiones estaba instalada en el sistema.
+
+2.  **Creación del Entorno Virtual:** Se creó un entorno virtual de Python llamado `.venv` para aislar las dependencias del proyecto.
+
+3.  **Instalación de Dependencias:** Se instalaron los paquetes de Python necesarios para el proyecto utilizando `pip install -r requirements.txt`.
+
+4.  **Error de Módulo No Encontrado:** Al ejecutar `qnn_predictor_pro.py`, se produjo un `ModuleNotFoundError: No module named 'numpy'`. Este error indicó que el intérprete de Python que se estaba utilizando no tenía acceso a los paquetes instalados en el entorno virtual.
+
+5.  **Conflicto de Versiones de Python:** Se identificó una discrepancia entre la versión de `python3` a la que apuntaba el sistema (`3.12.3`) y la versión de `pip` dentro del entorno virtual (asociada a `python3.11`). Esto causaba que los paquetes no se instalaran en la ubicación correcta para el intérpretate que ejecutaba el script.
+
+6.  **Resolución de Conflictos de Dependencia (Protobuf):** Durante la instalación de paquetes, surgieron conflictos con la versión del paquete `protobuf`. Se solucionó instalando una versión específica (`4.25.3`) que era compatible con las demás dependencias del proyecto, como `tensorflow`.

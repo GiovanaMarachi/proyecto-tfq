@@ -1,0 +1,203 @@
+Explicación Profunda del Algoritmo de Predicción Híbrido
+
+### Objetivo Principal
+
+El objetivo de este algoritmo es predecir el precio futuro del Bitcoin. Para lograrlo, utiliza un enfoque "híbrido", combinando dos tecnologías potentes: una red neuronal clásica (llamada LSTM) y una red neuronal cuántica (QNN).
+
+Imagina que quieres predecir el tiempo de mañana. No solo miras la temperatura de hoy, sino que analizas la tendencia de los últimos días (si ha estado bajando, si había mucho viento, etc.). Este algoritmo hace algo similar con el precio del Bitcoin.
+
+---
+
+### Paso 1: Preparación de los Datos
+
+1.  **Carga de Datos:** El algoritmo empieza leyendo datos históricos del precio del Bitcoin. Estos datos no están en un solo archivo, sino en varios, por lo que el primer paso es unirlos todos en una gran tabla cronológica.
+
+2.  **Selección de Características:** De toda la información disponible (precio de apertura, cierre, volumen, etc.), el modelo selecciona las columnas más relevantes para su análisis.
+
+3.  **Normalización:** Los precios del Bitcoin pueden variar enormemente (desde unos pocos dólares hasta miles). Para que el modelo pueda procesar estos números de manera eficiente, los "normaliza", es decir, los convierte a una escala más pequeña y manejable (generalmente entre 0 y 1). Es como convertir todas las monedas a una sola divisa de referencia antes de comparar.
+
+4.  **Creación de Secuencias:** Aquí está la clave. El modelo no mira un solo instante en el tiempo. En su lugar, crea "secuencias". Por ejemplo, para predecir el precio en la hora 21, analiza los datos de las 20 horas anteriores. Así, aprende de la **tendencia** y no solo de un dato aislado.
+
+---
+
+### Paso 2: El Modelo Híbrido (LSTM + QNN)
+
+Aquí es donde la magia ocurre. El modelo tiene dos "cerebros" que trabajan en paralelo.
+
+#### La Parte Clásica (LSTM)
+
+*   **¿Qué es una LSTM?** Una Red Neuronal de Memoria a Corto y Largo Plazo (LSTM) es un tipo de red neuronal ideal para datos secuenciales como el precio a lo largo del tiempo. Su gran ventaja es que tiene "memoria". Puede recordar patrones importantes que ocurrieron en el pasado (por ejemplo, "cada vez que el volumen de transacciones sube mucho, el precio tiende a bajar dos días después") y usar esa memoria para hacer predicciones más inteligentes.
+
+*   **Su Rol en el Algoritmo:** La LSTM recibe las secuencias de datos y actúa como un analista experimentado. Examina la evolución del precio y el volumen, y extrae las características más importantes de esa tendencia.
+
+#### La Parte Cuántica (QNN)
+
+*   **¿Qué es una QNN?** Una Red Neuronal Cuántica (QNN) utiliza los principios de la computación cuántica para analizar la información. Mientras que un ordenador clásico trabaja con bits (0 o 1), un ordenador cuántico usa "qubits", que pueden ser 0, 1 o ambos a la vez (superposición). Esto le permite explorar una cantidad de posibilidades y patrones mucho mayor y más compleja que un modelo clásico.
+
+*   **Su Rol en el Algoritmo:** La QNN no recibe todos los datos, sino una versión simplificada y codificada en un "circuito cuántico". Su trabajo es encontrar relaciones ocultas y muy complejas en los datos que la LSTM, por su naturaleza clásica, podría pasar por alto. Es como un pensador "fuera de la caja" que busca patrones no convencionales.
+
+#### El Matrimonio Híbrido
+
+1.  Los datos de las secuencias entran en la LSTM.
+2.  Al mismo tiempo, una versión simplificada de esos datos se convierte en un circuito cuántico y entra en la QNN.
+3.  La LSTM genera su análisis basado en la memoria de patrones pasados.
+4.  La QNN genera su análisis buscando patrones complejos y ocultos.
+5.  Finalmente, los resultados de ambos "cerebros" se **fusionan**. El modelo combina la sabiduría del analista experimentado (LSTM) con la creatividad del pensador innovador (QNN) para tomar una decisión final: la predicción del precio.
+
+---
+
+### Paso 3: Entrenamiento y Predicción
+
+1.  **Entrenamiento:** El modelo se "entrena" mostrándole la gran mayoría de los datos históricos (el 80%). Se le pide que haga una predicción y luego se le muestra el precio real que ocurrió. Si se equivocó, ajusta sus parámetros internos (tanto de la LSTM como de la QNN) para reducir el error. Este proceso se repite miles de veces.
+
+2.  **Prueba (Test):** Una vez entrenado, se usa el 20% de los datos que nunca ha visto para ponerlo a prueba y ver qué tan bien predice en un escenario realista.
+
+---
+
+### Paso 4: Visualización
+
+Para que podamos entender si el modelo funciona bien, el algoritmo genera dos gráficos:
+
+1.  **Gráfico de Predicción vs. Realidad:** Dibuja una línea con los precios reales y otra con las predicciones del modelo. Cuanto más se parezcan las líneas, mejor es el modelo.
+2.  **Gráfico de Pérdida:** Muestra cómo el "error" del modelo fue disminuyendo durante el entrenamiento. Una línea descendente indica que el modelo estaba aprendiendo correctamente.
+
+---
+
+### En Resumen (Analogía)
+
+Imagina que el **LSTM** es un veterano analista de bolsa que ha visto de todo y reconoce patrones basados en su experiencia. La **QNN** es una joven matemática brillante con métodos completamente nuevos que puede ver correlaciones que nadie más ve.
+
+El algoritmo los sienta en la misma mesa. El analista da su opinión basada en la historia, y la matemática da su visión basada en un análisis más abstracto y profundo. La predicción final es la conclusión a la que llegan ambos después de combinar sus perspectivas.
+
+---
+
+### Puntos Clave del Código
+
+Aquí tienes un vistazo a las partes más importantes del código que construyen el modelo híbrido.
+
+**1. La Rama Clásica (LSTM):**
+Aquí se definen las capas LSTM que procesan las secuencias de datos. `return_sequences=True` es importante para que la primera capa pase la secuencia completa a la siguiente, conservando la información temporal.
+
+```python
+# Rama clásica (LSTM)
+classical_input = Input(shape=(seq_len, n_features), name='classical_input')
+x = LSTM(100, return_sequences=True)(classical_input)
+x = Dropout(0.2)(x)
+x = LSTM(100)(x)
+x = Dropout(0.2)(x)
+x = Dense(16, activation='relu')(x)  # embedding clásico
+```
+
+**2. La Rama Cuántica (QNN):**
+Esta parte define la capa cuántica.
+*   `quantum_input`: Es una entrada especial que aceptará los "circuitos cuánticos" que creamos antes.
+*   `pqc_circuit`: Se define la estructura del circuito cuántico que la red aprenderá a usar. `sympy.Symbol` crea parámetros que el modelo puede entrenar.
+*   `tfq.layers.PQC`: Esta es la capa que ejecuta los circuitos cuánticos. `readout` le dice al modelo qué medición debe tomar del qubit para obtener un resultado clásico.
+
+```python
+# Rama cuántica (TFQ): input de circuitos (tf.string)
+quantum_input = Input(shape=(), dtype=tf.string, name='quantum_input')
+
+# Circuito parametrizado de 2 qubits para PQC
+q0, q1 = cirq.GridQubit.rect(1, 2)
+theta0 = sympy.Symbol('theta0')
+theta1 = sympy.Symbol('theta1')
+pqc_circuit = cirq.Circuit(...)
+readout = cirq.Z(q0)
+
+pqc_layer = tfq.layers.PQC(pqc_circuit, readout, name='pqc')
+q = pqc_layer(quantum_input)
+```
+
+**3. Fusión y Salida (usando Capas `Dense`):**
+Aquí es donde los dos "cerebros" se unen. 
+*   `Concatenate()`: Toma las salidas de la rama LSTM (`x`) y la rama QNN (`q`) y las une en un solo vector.
+*   **Capa `Dense`**: Esta es la capa de red neuronal más básica y fundamental. Su nombre, "Densa", 
+    se debe a que cada neurona de esta capa está conectada a **todas** las neuronas de la capa anterior. 
+    Su función es tomar la información que recibe (en este caso, la fusión de LSTM y QNN) y encontrar patrones y relaciones en ella. 
+    La `activation='relu'` es una función que ayuda al modelo a aprender relaciones no lineales complejas. 
+    La última capa `Dense(1)` es la que condensa todo el análisis en un único número: la predicción final del precio.
+
+```python
+# Fusión de ramas
+fused = Concatenate()([x, q])
+fused = Dense(16, activation='relu')(fused)
+output = Dense(1, name='price_pred')(fused)
+```
+
+**4. Creación y Entrenamiento del Modelo:**
+Finalmente, se define el modelo completo especificando sus entradas (la clásica y la cuántica) y su salida. 
+`model.fit` es la orden que inicia todo el proceso de entrenamiento.
+
+```python
+model = Model(inputs=[classical_input, quantum_input], outputs=output)
+model.compile(optimizer='adam', loss='mean_squared_error')
+
+history = model.fit(
+    [X_train, X_train_circuits],
+    y_train,
+    ...
+)
+```
+
+---
+
+### ¿Qué Ves en tu Terminal?
+
+Cuando ejecutas el script, la terminal se llena de información que puede parecer abrumadora. Aquí te explico qué significa lo más importante:
+
+**1. Resumen del Modelo (model.summary()):**
+Justo antes de empezar el entrenamiento, verás una tabla como esta. Es un resumen de la arquitectura de tu red.
+
+```
+Model: "model"
+__________________________________________________________________________________________________
+ Layer (type)                   Output Shape         Param #     Connected to
+==================================================================================================
+ classical_input (InputLayer)   [(None, 20, 6)]      0           []
+...
+ lstm (LSTM)                    (None, 20, 100)      42800       ['classical_input[0][0]']
+...
+ quantum_input (InputLayer)     [(None,)]            0           []
+...
+ pqc (PQC)                      (None, 1)            2           ['quantum_input[0][0]']
+...
+ concatenate (Concatenate)      (None, 17)           0           ['dense[0][0]', 'pqc[0][0]']
+...
+ price_pred (Dense)             (None, 1)            18          ['dense_1[0][0]']
+==================================================================================================
+Total params: 65,000
+Trainable params: 65,000
+Non-trainable params: 0
+__________________________________________________________________________________________________
+```
+*   **Layer (type):** El nombre y tipo de cada capa (LSTM, PQC, Dense, etc.).
+*   **Param #:** El número de parámetros (pesos) que el modelo tiene que aprender en esa capa. La capa `pqc` solo tiene 2 parámetros entrenables (`theta0` y `theta1`), mientras que las LSTM tienen miles.
+
+**2. Barra de Progreso del Entrenamiento:**
+Esta es la parte principal. Verás algo como esto repetido para cada "época" (una pasada completa por todos los datos de entrenamiento).
+
+`Epoch 1/50`
+`100/100 [==============================] - 10s 80ms/step - loss: 0.0123 - val_loss: 0.0045`
+
+*   **Epoch 1/50:** Indica que estás en la primera de 50 épocas de entrenamiento.
+*   **100/100:** Es la barra de progreso de los lotes (batches) de datos dentro de esa época.
+*   **10s:** Tiempo que tardó en completarse la época.
+*   **80ms/step:** Tiempo promedio por "paso" o lote.
+*   **loss: 0.0123:** ¡Esta es la métrica clave! Es el "error" o "pérdida" promedio en los datos de **entrenamiento**. Un número más bajo es mejor. Verás que este número tiende a bajar con cada época.
+*   **val_loss: 0.0045:** Es el error promedio en los datos de **validación** (el conjunto de prueba que el modelo no usa para aprender, 
+    solo para evaluarse).
+    Es la métrica más honesta para saber si tu modelo está generalizando bien.
+    Si `loss` baja pero `val_loss` sube, es una señal de sobreajuste (el modelo memoriza en lugar de aprender).
+
+**3. Mensajes Finales:**
+Al terminar, el script te informará dónde ha guardado los resultados:
+
+```
+✅ Listo.
+   - Pesos .h5: models/qnn_hibrido_bitcoin.weights.h5
+   - Checkpoint (prefijo): models/qnn_hibrido_bitcoin_ckpt-*
+   - Metadatos: models/qnn_hibrido_bitcoin_meta.json
+   - Gráficos: outputs/bitcoin_qnn_prediction_real_data_plot.png y ...
+```
+Esto te confirma que el proceso ha finalizado y puedes ir a la carpeta `outputs/` para ver los gráficos o a `models/` para ver los archivos del modelo guardado.
