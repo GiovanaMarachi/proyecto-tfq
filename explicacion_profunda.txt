@@ -32,7 +32,9 @@ Aquí es donde la magia ocurre. El modelo tiene dos "cerebros" que trabajan en p
 
 #### La Parte Cuántica (QNN)
 
-*   **¿Qué es una QNN?** Una Red Neuronal Cuántica (QNN) utiliza los principios de la computación cuántica para analizar la información. Mientras que un ordenador clásico trabaja con bits (0 o 1), un ordenador cuántico usa "qubits", que pueden ser 0, 1 o ambos a la vez (superposición). Esto le permite explorar una cantidad de posibilidades y patrones mucho mayor y más compleja que un modelo clásico.
+*   **¿Qué es una QNN?** Una Red Neuronal Cuántica (QNN) utiliza los principios de la computación cuántica para analizar la información.
+ Mientras que un ordenador clásico trabaja con bits (0 o 1), un ordenador cuántico usa "qubits", que pueden ser 0, 1 o ambos a la vez 
+ (superposición). Esto le permite explorar una cantidad de posibilidades y patrones mucho mayor y más compleja que un modelo clásico.
 
 *   **Su Rol en el Algoritmo:** La QNN no recibe todos los datos, sino una versión simplificada y codificada en un "circuito cuántico". Su trabajo es encontrar relaciones ocultas y muy complejas en los datos que la LSTM, por su naturaleza clásica, podría pasar por alto. Es como un pensador "fuera de la caja" que busca patrones no convencionales.
 

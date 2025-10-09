@@ -1,6 +1,5 @@
-# qnn_hibrido_bitcoin.py
-# Modelo híbrido LSTM + QNN con TFQ siguiendo la estructura de tu ANN original,
-# con guardado robusto (pesos .h5 + checkpoint + metadatos) para evitar problemas de serialización con TFQ.
+# qnn_predictor_pro.py
+# Modelo híbrido LSTM + QNN que predice el precio de BTC usando datos históricos de BTC y ETH.
 
 import os
 import json
@@ -16,6 +15,7 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import EarlyStopping
 from sklearn.preprocessing import MinMaxScaler
+from sklearn.metrics import mean_squared_error, mean_absolute_error, mean_absolute_percentage_error
 
 # --- Cuántico (TFQ) ---
 import tensorflow_quantum as tfq
@@ -23,54 +23,62 @@ import cirq
 import sympy
 
 # =========================
-# Paso 1: Cargar datos reales de Bitcoin desde múltiples archivos ZIP
+# Paso 1: Carga y Fusión de Datos (BTC y ETH)
 # =========================
-data_dir = 'data/Bitcoin'
-zip_files = sorted(glob.glob(os.path.join(data_dir, '*.zip')))
+def load_crypto_data(data_dir, prefix):
+    """Carga todos los archivos de datos de una cripto desde un directorio y les añade un prefijo."""
+    zip_files = sorted(glob.glob(os.path.join(data_dir, '*.zip')))
+    if not zip_files:
+        print(f"Advertencia: No se encontraron archivos .zip en la ruta: {data_dir}")
+        return pd.DataFrame()
 
-if not zip_files:
-    print(f"Error: No se encontraron archivos .zip en la ruta: {data_dir}")
-    raise SystemExit(1)
+    all_dfs = []
+    for zip_file_path in zip_files:
+        try:
+            with zipfile.ZipFile(zip_file_path, 'r') as zf:
+                excel_files = [f for f in zf.namelist() if f.endswith('.xlsx')]
+                if not excel_files:
+                    continue
+                with zf.open(excel_files[0]) as f:
+                    df = pd.read_excel(f)
+                    # Renombrar columnas con prefijo
+                    df.columns = [f"{prefix}_{col.lower()}" for col in df.columns]
+                    all_dfs.append(df)
+        except Exception as e:
+            print(f"Error procesando {zip_file_path}: {e}")
+            raise SystemExit(1)
 
-all_dfs = []
-for zip_file_path in zip_files:
-    try:
-        with zipfile.ZipFile(zip_file_path, 'r') as zf:
-            # Find the excel file in the zip (more robust)
-            excel_files = [f for f in zf.namelist() if f.endswith('.xlsx')]
-            if not excel_files:
-                print(f"Advertencia: No se encontró ningún archivo .xlsx en {zip_file_path}")
-                continue
-            excel_file_in_zip = excel_files[0]
-            with zf.open(excel_file_in_zip) as f:
-                df = pd.read_excel(f)
-                all_dfs.append(df)
-    except Exception as e:
-        print(f"Ocurrió un error al procesar el archivo {zip_file_path}: {e}")
-        print("Asegúrate de tener 'openpyxl' instalado: pip install openpyxl")
-        raise SystemExit(1)
+    if not all_dfs:
+        return pd.DataFrame()
 
-if not all_dfs:
-    print("Error: No se pudo leer ningún dato de los archivos zip.")
-    raise SystemExit(1)
+    full_df = pd.concat(all_dfs, ignore_index=True)
+    timestamp_col = f'{prefix}_timestamp'
+    if timestamp_col in full_df.columns:
+        full_df[timestamp_col] = pd.to_datetime(full_df[timestamp_col], unit='s', errors='coerce')
+        full_df = full_df.dropna(subset=[timestamp_col])
+        full_df = full_df.sort_values(by=timestamp_col).set_index(timestamp_col)
+    return full_df
 
-# Concatenar todos los dataframes y ordenar por timestamp
-full_df = pd.concat(all_dfs, ignore_index=True)
+# Cargar datos de BTC y ETH
+btc_df = load_crypto_data('data/Bitcoin', 'btc')
+eth_df = load_crypto_data('data/Ethereum', 'eth')
 
-# Convertir timestamp y setear índice
-if 'timestamp' in full_df.columns:
-    full_df['timestamp'] = pd.to_datetime(full_df['timestamp'], unit='s', errors='coerce')
-    full_df = full_df.dropna(subset=['timestamp'])
-    full_df = full_df.sort_values(by='timestamp').set_index('timestamp')
-else:
-    # Si no hay timestamp, asumimos que los datos están en orden cronológico
-    print("Advertencia: No se encontró la columna 'timestamp'. Se asumirá que los datos están en orden.")
+if btc_df.empty or eth_df.empty:
+    raise ValueError("No se pudieron cargar los datos de una o ambas criptomonedas.")
 
-# Selección de features
-features = ['open', 'high', 'low', 'close', 'basevolume', 'usdtvolume']
+# Fusionar DataFrames en base al timestamp
+full_df = pd.merge(btc_df, eth_df, left_index=True, right_index=True, how='outer')
+# Rellenar valores faltantes (si los hay) y luego eliminar filas con NaN restantes
+full_df = full_df.ffill().dropna()
+
+# Selección de features (12 en total)
+features = [
+    'btc_open', 'btc_high', 'btc_low', 'btc_close', 'btc_basevolume', 'btc_usdtvolume',
+    'eth_open', 'eth_high', 'eth_low', 'eth_close', 'eth_basevolume', 'eth_usdtvolume'
+]
 for col in features:
     if col not in full_df.columns:
-        raise ValueError(f"Falta la columna '{col}' en los datos leídos.")
+        raise ValueError(f"Falta la columna '{col}' en los datos fusionados.")
 
 data = full_df[features].values
 
@@ -81,14 +89,15 @@ scaler = MinMaxScaler(feature_range=(0, 1))
 scaled_data = scaler.fit_transform(data)
 
 # =========================
-# Paso 3: Crear secuencias (igual que tu ANN)
+# Paso 3: Crear secuencias
 # =========================
 def create_sequences(data, seq_len):
     X, y = [], []
-    close_idx = features.index('close')
+    # El objetivo sigue siendo predecir el precio de cierre de BTC
+    btc_close_idx = features.index('btc_close')
     for i in range(seq_len, len(data)):
-        X.append(data[i - seq_len:i])              # (seq_len, n_features)
-        y.append(data[i, close_idx])               # valor normalizado de 'close' actual
+        X.append(data[i - seq_len:i])
+        y.append(data[i, btc_close_idx])
     return np.array(X), np.array(y)
 
 seq_length = 20
@@ -104,26 +113,35 @@ X_train, X_test = X[:train_size], X[train_size:]
 y_train, y_test = y[:train_size], y[train_size:]
 
 # =========================
-# Utilidades TFQ: circuitos por muestra
+# Utilidades TFQ: circuitos multivariable
 # =========================
-def build_sample_circuit(last_close_norm, last_usdtvol_norm):
-    q0, q1 = cirq.GridQubit.rect(1, 2)
+def build_sample_circuit(btc_close, btc_vol, eth_close, eth_vol):
+    qubits = cirq.GridQubit.rect(1, 4)
     circuit = cirq.Circuit()
-    theta0 = float(last_close_norm) * np.pi
-    theta1 = float(last_usdtvol_norm) * np.pi
-    circuit.append(cirq.rx(theta0)(q0))
-    circuit.append(cirq.rx(theta1)(q1))
-    circuit.append(cirq.CZ(q0, q1))
+    # Codificar los 4 valores en rotaciones de los 4 qubits
+    circuit.append(cirq.rx(float(btc_close) * np.pi)(qubits[0]))
+    circuit.append(cirq.rx(float(btc_vol) * np.pi)(qubits[1]))
+    circuit.append(cirq.rx(float(eth_close) * np.pi)(qubits[2]))
+    circuit.append(cirq.rx(float(eth_vol) * np.pi)(qubits[3]))
+    # Entrelazar los qubits
+    circuit.append(cirq.CZ(qubits[0], qubits[1]))
+    circuit.append(cirq.CZ(qubits[1], qubits[2]))
+    circuit.append(cirq.CZ(qubits[2], qubits[3]))
     return circuit
 
 def sequences_to_circuits(X_seq):
-    close_idx = features.index('close')
-    usdt_idx = features.index('usdtvolume')
+    btc_close_idx = features.index('btc_close')
+    btc_vol_idx = features.index('btc_usdtvolume')
+    eth_close_idx = features.index('eth_close')
+    eth_vol_idx = features.index('eth_usdtvolume')
     circuits = []
     for sample in X_seq:
-        last_close = sample[-1, close_idx]
-        last_usdtvol = sample[-1, usdt_idx]
-        circuits.append(build_sample_circuit(last_close, last_usdtvol))
+        # Extraer el último valor de cada feature relevante
+        last_btc_close = sample[-1, btc_close_idx]
+        last_btc_vol = sample[-1, btc_vol_idx]
+        last_eth_close = sample[-1, eth_close_idx]
+        last_eth_vol = sample[-1, eth_vol_idx]
+        circuits.append(build_sample_circuit(last_btc_close, last_btc_vol, last_eth_close, last_eth_vol))
     return tfq.convert_to_tensor(circuits)
 
 X_train_circuits = sequences_to_circuits(X_train)
@@ -139,24 +157,26 @@ def create_hybrid_lstm_qnn_model(seq_len, n_features):
     x = Dropout(0.3)(x)
     x = LSTM(100)(x)
     x = Dropout(0.3)(x)
-    x = Dense(16, activation='relu')(x)  # embedding clásico
+    x = Dense(16, activation='relu')(x)
 
-    # Rama cuántica (TFQ): input de circuitos (tf.string)
+    # Rama cuántica (TFQ)
     quantum_input = Input(shape=(), dtype=tf.string, name='quantum_input')
-
-    # Circuito parametrizado de 2 qubits para PQC
-    q0, q1 = cirq.GridQubit.rect(1, 2)
-    theta0 = sympy.Symbol('theta0')
-    theta1 = sympy.Symbol('theta1')
+    # PQC con 4 qubits y 4 parámetros entrenables
+    qubits = cirq.GridQubit.rect(1, 4)
+    params = sympy.symbols('theta0:4')
     pqc_circuit = cirq.Circuit(
-        cirq.ry(theta0)(q0),
-        cirq.ry(theta1)(q1),
-        cirq.CZ(q0, q1)
+        cirq.ry(params[0])(qubits[0]),
+        cirq.ry(params[1])(qubits[1]),
+        cirq.ry(params[2])(qubits[2]),
+        cirq.ry(params[3])(qubits[3]),
+        cirq.CZ(qubits[0], qubits[1]),
+        cirq.CZ(qubits[1], qubits[2]),
+        cirq.CZ(qubits[2], qubits[3])
     )
-    readout = cirq.Z(q0)
+    readout = cirq.Z(qubits[0])
 
     pqc_layer = tfq.layers.PQC(pqc_circuit, readout, name='pqc')
-    q = pqc_layer(quantum_input)  # (batch, 1)
+    q = pqc_layer(quantum_input)
 
     # Fusión de ramas
     fused = Concatenate()([x, q])
@@ -167,23 +187,14 @@ def create_hybrid_lstm_qnn_model(seq_len, n_features):
     return model
 
 model = create_hybrid_lstm_qnn_model(seq_length, X.shape[2])
-
-# Optimizador con learning rate reducido
 optimizer = Adam(learning_rate=0.0001)
 model.compile(optimizer=optimizer, loss='mean_squared_error')
-
 print(model.summary())
 
 # =========================
 # Paso 6: Entrenar
 # =========================
-# Callback de EarlyStopping
-early_stopping = EarlyStopping(
-    monitor='val_loss',
-    patience=10,
-    restore_best_weights=True
-)
-
+early_stopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
 history = model.fit(
     [X_train, X_train_circuits],
     y_train,
@@ -195,35 +206,124 @@ history = model.fit(
 )
 
 # =========================
-# Paso 7: Predicción (antes de guardar)
+# Paso 7: Predicción
 # =========================
-predicted = model.predict([X_test, X_test_circuits])
+predicted_scaled = model.predict([X_test, X_test_circuits])
 
-# Inversión de escala solo para 'close'
-close_idx = features.index('close')
-dummy_pred = np.zeros((len(predicted), len(features)))
-dummy_pred[:, close_idx] = predicted.flatten()
-predicted_prices = scaler.inverse_transform(dummy_pred)[:, close_idx]
+# Inversión de escala para el precio de BTC
+btc_close_idx = features.index('btc_close')
+dummy_pred = np.zeros((len(predicted_scaled), len(features)))
+dummy_pred[:, btc_close_idx] = predicted_scaled.flatten()
+predicted_prices = scaler.inverse_transform(dummy_pred)[:, btc_close_idx]
 
 dummy_real = np.zeros((len(y_test), len(features)))
-dummy_real[:, close_idx] = y_test.flatten()
-real_prices = scaler.inverse_transform(dummy_real)[:, close_idx]
+dummy_real[:, btc_close_idx] = y_test.flatten()
+real_prices = scaler.inverse_transform(dummy_real)[:, btc_close_idx]
 
 # =========================
-# Paso 8: Visualizaciones y guardado en outputs/
+# Paso 7.1: Análisis de Métricas y Rango de Error
+# Este bloque calcula métricas de error comunes (RMSE, MAE, MAPE) y también
+# identifica los puntos de datos con el mayor y menor error.
+# =========================
+# Calcular y mostrar métricas de error
+mae = mean_absolute_error(real_prices, predicted_prices)
+mape = mean_absolute_percentage_error(real_prices, predicted_prices)
+mse = mean_squared_error(real_prices, predicted_prices)
+rmse = np.sqrt(mse)
+
+print("\n" + "="*25)
+print("Métricas de Error y Precisión del Modelo")
+print("="*25)
+print(f"   - MAE (Error Absoluto Medio):      ${mae:.2f}")
+print(f"   - MAPE (Error Porcentual Absoluto Medio): {mape:.2%}")
+print(f"   - RMSE (Raíz del Error Cuadrático Medio): ${rmse:.2f}")
+print(f"   - Precisión del Modelo (1 - MAPE):   {1 - mape:.2%}")
+print("="*25)
+
+# Calcular el error absoluto entre el precio real y el predicho
+error_absoluto = np.abs(real_prices - predicted_prices)
+
+# Encontrar el índice del error mínimo y máximo
+min_error_idx = np.argmin(error_absoluto)
+max_error_idx = np.argmax(error_absoluto)
+
+# Obtener los valores para la mejor y peor predicción
+mejor_prediccion = {
+    "real": real_prices[min_error_idx],
+    "predicho": predicted_prices[min_error_idx],
+    "error": error_absoluto[min_error_idx]
+}
+peor_prediccion = {
+    "real": real_prices[max_error_idx],
+    "predicho": predicted_prices[max_error_idx],
+    "error": error_absoluto[max_error_idx]
+}
+
+print("\n" + "="*25)
+print("Análisis de Rango de Error Individual")
+print("="*25)
+print(f"Mejor Predicción (Error Mínimo):")
+print(f"   - Precio Real:      ${mejor_prediccion['real']:.2f}")
+print(f"   - Precio Predicho:    ${mejor_prediccion['predicho']:.2f}")
+print(f"   - Error Absoluto:     ${mejor_prediccion['error']:.2f}")
+print("-" * 25)
+print(f"Peor Predicción (Error Máximo):")
+print(f"   - Precio Real:      ${peor_prediccion['real']:.2f}")
+print(f"   - Precio Predicho:    ${peor_prediccion['predicho']:.2f}")
+print(f"   - Error Absoluto:     ${peor_prediccion['error']:.2f}")
+print("="*25 + "\n")
+
+
+# =========================
+# Paso 8: Visualizaciones y guardado
 # =========================
 os.makedirs('outputs', exist_ok=True)
 
+# --- Gráfico 1: Vista General ---
 plt.figure(figsize=(12, 6))
-plt.plot(real_prices, label='Precio Real')
-plt.plot(predicted_prices, label='Precio Predicho')
-plt.title('Predicción de Precios de Bitcoin (Híbrido LSTM+QNN Optimizado)')
+plt.plot(real_prices, label='Precio Real de BTC')
+plt.plot(predicted_prices, label='Precio Predicho de BTC')
+plt.title('Predicción de Precios de Bitcoin con datos de ETH (Híbrido LSTM+QNN)')
 plt.xlabel('Puntos de Datos')
 plt.ylabel('Precio (USD)')
 plt.legend()
 plt.grid(True)
-plt.savefig('outputs/bitcoin_qnn_prediction_real_data_plot.png')
+plt.savefig('outputs/bitcoin_multivariable_qnn_prediction_plot.png')
 plt.close()
+
+# --- Gráfico 2: Zoom en la Mejor Predicción ---
+context_window = 20
+start_idx = max(0, min_error_idx - context_window)
+end_idx = min(len(real_prices), min_error_idx + context_window)
+
+plt.figure(figsize=(12, 6))
+plt.plot(range(start_idx, end_idx), real_prices[start_idx:end_idx], label='Precio Real de BTC', color='blue', marker='o', linestyle='-')
+plt.plot(range(start_idx, end_idx), predicted_prices[start_idx:end_idx], label='Precio Predicho de BTC', color='red', marker='x', linestyle='--')
+plt.axvline(x=min_error_idx, color='green', linestyle='--', label=f'Mejor Predicción (Error: ${mejor_prediccion["error"]:.2f})')
+plt.title('Vista Ampliada: Mejor Predicción (Error Mínimo)')
+plt.xlabel('Puntos de Datos (Índice)')
+plt.ylabel('Precio (USD)')
+plt.legend()
+plt.grid(True)
+plt.savefig('outputs/bitcoin_qnn_mejor_prediccion_zoom.png')
+plt.close()
+
+# --- Gráfico 3: Zoom en la Peor Predicción ---
+start_idx = max(0, max_error_idx - context_window)
+end_idx = min(len(real_prices), max_error_idx + context_window)
+
+plt.figure(figsize=(12, 6))
+plt.plot(range(start_idx, end_idx), real_prices[start_idx:end_idx], label='Precio Real de BTC', color='blue', marker='o', linestyle='-')
+plt.plot(range(start_idx, end_idx), predicted_prices[start_idx:end_idx], label='Precio Predicho de BTC', color='red', marker='x', linestyle='--')
+plt.axvline(x=max_error_idx, color='purple', linestyle='--', label=f'Peor Predicción (Error: ${peor_prediccion["error"]:.2f})')
+plt.title('Vista Ampliada: Peor Predicción (Error Máximo)')
+plt.xlabel('Puntos de Datos (Índice)')
+plt.ylabel('Precio (USD)')
+plt.legend()
+plt.grid(True)
+plt.savefig('outputs/bitcoin_qnn_peor_prediccion_zoom.png')
+plt.close()
+
 
 plt.figure(figsize=(12, 6))
 plt.plot(history.history['loss'], label='Pérdida de Entrenamiento')
@@ -235,7 +335,6 @@ plt.legend()
 plt.grid(True)
 plt.savefig('outputs/bitcoin_qnn_training_loss_plot.png')
 plt.close()
-
 # =========================
 # Paso 9: Guardado robusto (TFQ)
 # =========================
@@ -261,6 +360,6 @@ print("✅ Listo.")
 print("   - Pesos .h5: models/qnn_hibrido_bitcoin.weights.h5")
 print("   - Checkpoint (prefijo): models/qnn_hibrido_bitcoin_ckpt-*")
 print("   - Metadatos: models/qnn_hibrido_bitcoin_meta.json")
-print("   - Gráficos: outputs/bitcoin_qnn_prediction_real_data_plot.png y outputs/bitcoin_qnn_training_loss_plot.png")
+print("   - Gráficos: outputs/bitcoin_multivariable_qnn_prediction_plot.png, outputs/bitcoin_qnn_mejor_prediccion_zoom.png, outputs/bitcoin_qnn_peor_prediccion_zoom.png, outputs/bitcoin_qnn_training_loss_plot.png")
 
 print("\nFin del script.")
