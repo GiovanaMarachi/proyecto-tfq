@@ -1,12 +1,18 @@
 {
   "seq_length": 20,
-  "n_features": 6,
+  "n_features": 12,
   "features_order": [
-    "open",
-    "high",
-    "low",
-    "close",
-    "basevolume",
-    "usdtvolume"
+    "btc_open",
+    "btc_high",
+    "btc_low",
+    "btc_close",
+    "btc_basevolume",
+    "btc_usdtvolume",
+    "eth_open",
+    "eth_high",
+    "eth_low",
+    "eth_close",
+    "eth_basevolume",
+    "eth_usdtvolume"
   ]
 }

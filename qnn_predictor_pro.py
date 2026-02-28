@@ -16,6 +16,7 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import EarlyStopping
 from sklearn.preprocessing import MinMaxScaler
+import plot_styles
 
 # --- Cuántico (TFQ) ---
 import tensorflow_quantum as tfq
@@ -103,6 +104,9 @@ train_size = int(len(X) * 0.8)
 X_train, X_test = X[:train_size], X[train_size:]
 y_train, y_test = y[:train_size], y[train_size:]
 
+# Guardar timestamps para el set de test
+test_timestamps = full_df.index[seq_length + train_size:]
+
 # =========================
 # Utilidades TFQ: circuitos por muestra
 # =========================
@@ -172,6 +176,10 @@ model = create_hybrid_lstm_qnn_model(seq_length, X.shape[2])
 optimizer = Adam(learning_rate=0.0001)
 model.compile(optimizer=optimizer, loss='mean_squared_error')
 
+# Configurar estilo de publicación
+plot_styles.set_pub_style()
+colors = plot_styles.get_pub_colors()
+
 print(model.summary())
 
 # =========================
@@ -210,30 +218,62 @@ dummy_real[:, close_idx] = y_test.flatten()
 real_prices = scaler.inverse_transform(dummy_real)[:, close_idx]
 
 # =========================
-# Paso 8: Visualizaciones y guardado en outputs/
+# Paso 8: Visualizaciones Profesionales y Zoom del Mejor Ajuste
 # =========================
 os.makedirs('outputs', exist_ok=True)
 
+# 8.1: Guardar datos en CSV para referencia futura
+results_df = pd.DataFrame({
+    'Timestamp': test_timestamps,
+    'Real': real_prices.flatten(),
+    'Predicho': predicted_prices.flatten()
+})
+results_df.to_csv('outputs/prediction_results.csv', index=False)
+print(f"   - Datos guardados en outputs/prediction_results.csv")
+
+# 8.2: Gráfico General
 plt.figure(figsize=(12, 6))
-plt.plot(real_prices, label='Precio Real')
-plt.plot(predicted_prices, label='Precio Predicho')
-plt.title('Predicción de Precios de Bitcoin (Híbrido LSTM+QNN Optimizado)')
-plt.xlabel('Puntos de Datos')
-plt.ylabel('Precio (USD)')
+plt.plot(real_prices, label='Precio Real', color=colors['real'], alpha=0.8)
+plt.plot(predicted_prices, label='Precio Predicho', color=colors['pred'], linestyle='-')
+plt.title('Bitcoin Price Prediction - Hybrid LSTM+QNN')
+plt.xlabel('Data Points')
+plt.ylabel('Price (USD)')
 plt.legend()
-plt.grid(True)
-plt.savefig('outputs/bitcoin_qnn_prediction_real_data_plot.png')
+plot_styles.save_publication_figures('bitcoin_qnn_general_prediction')
 plt.close()
 
-plt.figure(figsize=(12, 6))
-plt.plot(history.history['loss'], label='Pérdida de Entrenamiento')
-plt.plot(history.history['val_loss'], label='Pérdida de Validación')
-plt.title('Pérdida del Modelo durante el Entrenamiento (LSTM+QNN Optimizado)')
-plt.xlabel('Época')
-plt.ylabel('Pérdida (MSE)')
+# 8.3: Zoom al Mejor Ajuste (Ventana de 50 puntos con menor MAE)
+window_size = 50
+mae_values = np.abs(real_prices.flatten() - predicted_prices.flatten())
+best_mae = float('inf')
+best_idx = 0
+
+for i in range(len(mae_values) - window_size):
+    window_mae = np.mean(mae_values[i:i+window_size])
+    if window_mae < best_mae:
+        best_mae = window_mae
+        best_idx = i
+
+plt.figure(figsize=(10, 6))
+plt.plot(real_prices[best_idx:best_idx+window_size], label='Precio Real', marker='o', color=colors['real'], markersize=4)
+plt.plot(predicted_prices[best_idx:best_idx+window_size], label='Precio Predicho', marker='x', color=colors['pred'], markersize=4)
+plt.title(f'Best Prediction Detail (Window starting at index {best_idx})')
+plt.xlabel('Data Points (Test Set Window)')
+plt.ylabel('Price (USD)')
 plt.legend()
-plt.grid(True)
-plt.savefig('outputs/bitcoin_qnn_training_loss_plot.png')
+plot_styles.save_publication_figures('bitcoin_qnn_best_match_zoom')
+plt.close()
+
+# 8.4: Gráfico de Pérdida
+plt.figure(figsize=(10, 6))
+plt.plot(history.history['loss'], label='Training Loss', color=colors['train_loss'])
+plt.plot(history.history['val_loss'], label='Validation Loss', color=colors['val_loss'])
+plt.yscale('log') # Escala logarítmica ayuda a ver convergencia fina
+plt.title('Model Convergence (Log Scale)')
+plt.xlabel('Epoch')
+plt.ylabel('Loss (MSE)')
+plt.legend()
+plot_styles.save_publication_figures('bitcoin_qnn_loss_log')
 plt.close()
 
 # =========================
